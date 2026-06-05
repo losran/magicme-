@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Superellipse 盖板玻璃轮廓生成器 v3</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f6f6f6;
+    color: #222;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 390px 1fr;
+    gap: 24px;
+    padding: 24px;
+    min-height: 100vh;
+  }
+  .panel, .canvasBox {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.08);
+  }
+  .panel { padding: 22px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  .desc {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 18px;
+  }
+  .group { margin: 16px 0; }
+  label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  label span { font-weight: 700; }
+  input[type="range"] { width: 100%; }
+  input[type="number"], select {
+    width: 100px;
+    padding: 7px 8px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: #fff;
+  }
+  select { width: 160px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  button {
+    border: 0;
+    background: #111;
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  button.secondary { background: #e9e9e9; color: #111; }
+  textarea {
+    width: 100%;
+    min-height: 150px;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+  .canvasBox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+    position: relative;
+  }
+  svg { max-width: 100%; max-height: 86vh; overflow: visible; }
+  .note {
+    font-size: 12px;
+    color: #777;
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  .pill {
+    display: inline-block;
+    background: #f1f1f1;
+    border-radius: 999px;
+    padding: 4px 8px;
+    margin: 4px 4px 0 0;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+    <h1>Superellipse 盖板玻璃轮廓生成器 v3</h1>
+    <div class="desc">
+      用公式 |x/a|ⁿ + |y/b|ⁿ = 1 生成超椭圆轮廓。<br>
+      现在支持两种输出：折线点位 / 三次贝塞尔拟合。
+    </div>
+
+    <div class="group">
+      <label>输出模式 <span id="modeVal">Bezier</span></label>
+      <select id="mode">
+        <option value="bezier" selected>Bezier 三次曲线</option>
+        <option value="polyline">Polyline 折线点</option>
+      </select>
+      <div class="note">
+        建议给 Figma / AI 用 Bezier 模式，锚点少且曲线更顺。
+      </div>
+    </div>
+
+    <div class="group">
+      <label>宽度 W / mm <span id="wVal">32.7</span></label>
+      <div class="row">
+        <input id="w" type="range" min="20" max="50" step="0.1" value="32.7">
+        <input id="wNum" type="number" step="0.1" value="32.7">
+      </div>
+    </div>
+
+    <div class="group">
+      <label>高度 H / mm <span id="hVal">38.9</span></label>
+      <div class="row">
+        <input id="h" type="range" min="25" max="60" step="0.1" value="38.9">
+        <input id="hNum" type="number" step="0.1" value="38.9">
+      </div>
+    </div>
+
+    <div class="group">
+      <label>超椭圆指数 n <span id="nVal">3.00</span></label>
+      <div class="row">
+        <input id="n" type="range" min="2" max="8" step="0.05" value="3">
+        <input id="nNum" type="number" step="0.05" value="3">
+      </div>
+      <div class="note">
+        n=2 是椭圆；n=3 更软；n=4 更像现代 squircle；n=5+ 更方、更硬。
+      </div>
+    </div>
+
+    <div class="group">
+      <label>锚点 / 分段数量 <span id="anchorVal">32</span></label>
+      <div class="row">
+        <input id="anchors" type="range" min="8" max="96" step="4" value="32">
+        <input id="anchorsNum" type="number" min="8" max="180" step="4" value="32">
+      </div>
+      <div class="note">
+        Bezier 模式建议 16–32；Polyline 模式建议 48–96。
+      </div>
+    </div>
+
+    <div class="group">
+      <label>Bezier 平滑张力 <span id="tensionVal">1.00</span></label>
+      <div class="row">
+        <input id="tension" type="range" min="0.4" max="1.4" step="0.05" value="1">
+        <input id="tensionNum" type="number" step="0.05" value="1">
+      </div>
+      <div class="note">
+        只影响 Bezier 模式。1.00 通常最稳；太大可能过冲，太小会偏紧。
+      </div>
+    </div>
+
+    <div class="group">
+      <label>描边粗细 / mm <span id="strokeVal">0.7</span></label>
+      <div class="row">
+        <input id="stroke" type="range" min="0.1" max="2" step="0.1" value="0.7">
+        <input id="strokeNum" type="number" step="0.1" value="0.7">
+      </div>
+    </div>
+
+    <div class="group">
+      <button onclick="downloadSVG()">下载 SVG</button>
+      <button class="secondary" onclick="copySVG()">复制 SVG</button>
+      <button class="secondary" onclick="copyPath()">复制 Path</button>
+    </div>
+
+    <div class="note">
+      当前参数：
+      <div>
+        <span class="pill" id="paramMode">Bezier</span>
+        <span class="pill" id="paramW">W 32.7mm</span>
+        <span class="pill" id="paramH">H 38.9mm</span>
+        <span class="pill" id="paramN">n 3.00</span>
+        <span class="pill" id="paramA">32 segments</span>
+      </div>
+    </div>
+
+    <textarea id="svgText" readonly></textarea>
+  </div>
+
+  <div class="canvasBox">
+    <svg id="preview" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+</div>
+
+<script>
+const els = {
+  mode: document.getElementById('mode'), modeVal: document.getElementById('modeVal'),
+  w: document.getElementById('w'), wNum: document.getElementById('wNum'), wVal: document.getElementById('wVal'),
+  h: document.getElementById('h'), hNum: document.getElementById('hNum'), hVal: document.getElementById('hVal'),
+  n: document.getElementById('n'), nNum: document.getElementById('nNum'), nVal: document.getElementById('nVal'),
+  anchors: document.getElementById('anchors'), anchorsNum: document.getElementById('anchorsNum'), anchorVal: document.getElementById('anchorVal'),
+  tension: document.getElementById('tension'), tensionNum: document.getElementById('tensionNum'), tensionVal: document.getElementById('tensionVal'),
+  stroke: document.getElementById('stroke'), strokeNum: document.getElementById('strokeNum'), strokeVal: document.getElementById('strokeVal'),
+  preview: document.getElementById('preview'),
+  svgText: document.getElementById('svgText'),
+  paramMode: document.getElementById('paramMode'),
+  paramW: document.getElementById('paramW'),
+  paramH: document.getElementById('paramH'),
+  paramN: document.getElementById('paramN'),
+  paramA: document.getElementById('paramA')
+};
+
+function bindPair(range, num, cb) {
+  range.addEventListener('input', () => { num.value = range.value; cb(); });
+  num.addEventListener('input', () => { range.value = num.value; cb(); });
+}
+
+els.mode.addEventListener('change', render);
+bindPair(els.w, els.wNum, render);
+bindPair(els.h, els.hNum, render);
+bindPair(els.n, els.nNum, render);
+bindPair(els.anchors, els.anchorsNum, render);
+bindPair(els.tension, els.tensionNum, render);
+bindPair(els.stroke, els.strokeNum, render);
+
+function superellipsePoints(W, H, n, count) {
+  const a = W / 2;
+  const b = H / 2;
+  const pts = [];
+  for (let i = 0; i < count; i++) {
+    const t = (i / count) * Math.PI * 2;
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    const x = a * Math.sign(c) * Math.pow(Math.abs(c), 2 / n);
+    const y = b * Math.sign(s) * Math.pow(Math.abs(s), 2 / n);
+    pts.push({x, y});
+  }
+  return pts;
+}
+
+function polylinePath(W, H, n, anchors) {
+  const pts = superellipsePoints(W, H, n, anchors);
+  let d = "";
+  pts.forEach((p, i) => {
+    d += (i === 0 ? "M " : " L ") + p.x.toFixed(4) + " " + p.y.toFixed(4);
+  });
+  return d + " Z";
+}
+
+// Closed Catmull-Rom to cubic Bezier.
+// 注意：这是贝塞尔拟合，不是数学上“完全精确”的超椭圆；但导入设计软件更顺、更好编辑。
+function bezierPath(W, H, n, anchors, tension) {
+  const pts = superellipsePoints(W, H, n, anchors);
+  const len = pts.length;
+  let d = `M ${pts[0].x.toFixed(4)} ${pts[0].y.toFixed(4)}`;
+
+  const k = tension / 6;
+
+  for (let i = 0; i < len; i++) {
+    const p0 = pts[(i - 1 + len) % len];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % len];
+    const p3 = pts[(i + 2) % len];
+
+    const c1 = {
+      x: p1.x + (p2.x - p0.x) * k,
+      y: p1.y + (p2.y - p0.y) * k
+    };
+    const c2 = {
+      x: p2.x - (p3.x - p1.x) * k,
+      y: p2.y - (p3.y - p1.y) * k
+    };
+
+    d += ` C ${c1.x.toFixed(4)} ${c1.y.toFixed(4)}, ${c2.x.toFixed(4)} ${c2.y.toFixed(4)}, ${p2.x.toFixed(4)} ${p2.y.toFixed(4)}`;
+  }
+  return d + " Z";
+}
+
+function makePath() {
+  const W = parseFloat(els.w.value);
+  const H = parseFloat(els.h.value);
+  const n = parseFloat(els.n.value);
+  const anchors = Math.max(8, Math.round(parseFloat(els.anchors.value)));
+  const tension = parseFloat(els.tension.value);
+  const mode = els.mode.value;
+  return mode === "bezier"
+    ? bezierPath(W, H, n, anchors, tension)
+    : polylinePath(W, H, n, anchors);
+}
+
+function render() {
+  const W = parseFloat(els.w.value);
+  const H = parseFloat(els.h.value);
+  const n = parseFloat(els.n.value);
+  const anchors = Math.max(8, Math.round(parseFloat(els.anchors.value)));
+  const stroke = parseFloat(els.stroke.value);
+  const mode = els.mode.value;
+  const pad = 4;
+
+  const d = makePath();
+  const vb = `${-(W/2+pad)} ${-(H/2+pad)} ${W+pad*2} ${H+pad*2}`;
+
+  const svgContent =
+`<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="${vb}">
+  <path d="${d}" fill="none" stroke="#000000" stroke-width="${stroke}" vector-effect="non-scaling-stroke"/>
+</svg>`;
+
+  els.preview.setAttribute("viewBox", vb);
+  els.preview.innerHTML = `
+    <rect x="${-W/2}" y="${-H/2}" width="${W}" height="${H}" fill="rgba(0,0,0,0.025)" stroke="rgba(0,0,0,0.12)" stroke-width="0.08"/>
+    <path d="${d}" fill="url(#glassGrad)" stroke="#000" stroke-width="${stroke}" vector-effect="non-scaling-stroke"/>
+    <defs>
+      <linearGradient id="glassGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="55%" stop-color="#f5f5f5"/>
+        <stop offset="56%" stop-color="#e7e7e7"/>
+        <stop offset="100%" stop-color="#ffffff"/>
+      </linearGradient>
+    </defs>
+  `;
+  els.preview.setAttribute("width", "520");
+  els.preview.setAttribute("height", "620");
+
+  els.svgText.value = svgContent;
+  els.modeVal.textContent = mode === "bezier" ? "Bezier" : "Polyline";
+  els.wVal.textContent = W.toFixed(1);
+  els.hVal.textContent = H.toFixed(1);
+  els.nVal.textContent = n.toFixed(2);
+  els.anchorVal.textContent = anchors;
+  els.tensionVal.textContent = parseFloat(els.tension.value).toFixed(2);
+  els.strokeVal.textContent = stroke.toFixed(1);
+  els.paramMode.textContent = mode === "bezier" ? "Bezier" : "Polyline";
+  els.paramW.textContent = `W ${W.toFixed(1)}mm`;
+  els.paramH.textContent = `H ${H.toFixed(1)}mm`;
+  els.paramN.textContent = `n ${n.toFixed(2)}`;
+  els.paramA.textContent = `${anchors} segments`;
+}
+
+function downloadSVG() {
+  const blob = new Blob([els.svgText.value], {type: "image/svg+xml"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const W = parseFloat(els.w.value).toFixed(1);
+  const H = parseFloat(els.h.value).toFixed(1);
+  const n = parseFloat(els.n.value).toFixed(2);
+  const anchors = Math.round(parseFloat(els.anchors.value));
+  const mode = els.mode.value;
+  a.download = `superellipse_${W}x${H}_n${n}_${mode}_${anchors}seg.svg`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function copySVG() {
+  await navigator.clipboard.writeText(els.svgText.value);
+  alert("已复制 SVG");
+}
+
+async function copyPath() {
+  await navigator.clipboard.writeText(makePath());
+  alert("已复制 path");
+}
+
+render();
+</script>
+</body>
+</html>
